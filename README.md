@@ -1,66 +1,121 @@
 # Claude Code Meta-Process
 
-A collection of patterns for coordinating AI coding assistants (Claude Code, Cursor, etc.) on shared codebases.
+**Planning is the leverage point.**
 
-## What This Solves
+Claude Code works well on small projects. On large or complex codebases, it struggles—making no progress, or introducing regressions. The difference isn't the model. It's whether you planned before executing.
 
-- **Parallel work conflicts** - Multiple instances editing the same files
-- **Context loss** - AI forgetting project conventions mid-session
-- **Documentation drift** - Docs diverging from code over time
-- **AI drift** - AI guessing instead of investigating
+This framework provides structured planning that Claude Code walks you through, then enforces during implementation.
 
-## Quick Start
+## The Problem
 
-```bash
-# Clone this repo
-git clone https://github.com/BrianMills2718/claude_code_meta_process.git
+Without structured planning on complex repos:
+- Claude Code guesses instead of investigating
+- Assumptions collapse late in implementation
+- Context is lost across sessions
+- Work thrashes or breaks existing functionality
 
-# Copy to your project
-cp -r claude_code_meta_process/* your-project/meta-process/
-cp claude_code_meta_process/meta-process.yaml.example your-project/meta-process.yaml
+## The Solution
 
-# Or use the install script
-./install.sh /path/to/your-project
+Plan first. Enforce the plan during execution.
+
+1. **Surface questions before proposing solutions** - Investigate, don't assume
+2. **Track uncertainties explicitly** - Preserve context across sessions
+3. **Verify claims in code** - Every "I believe" becomes "I verified in X"
+4. **Enforce plans with hooks** - Catch drift before it causes damage
+
+## Core Planning Patterns
+
+### Question-Driven Planning
+
+Before writing code, list what you don't know. Investigate each question.
+
+```markdown
+## Open Questions
+
+1. [ ] Where does permission checking happen?
+   - Status: OPEN
+   - Why it matters: Need to understand before modifying
+
+2. [x] How are contracts validated?
+   - Status: RESOLVED
+   - Answer: In permission_checker.py:34-89
+   - Verified in: src/world/permission_checker.py
 ```
 
-## Documentation
+### Uncertainty Tracking
 
-- [Getting Started](GETTING_STARTED.md) - Step-by-step adoption guide
-- [Patterns](patterns/01_README.md) - All 29 patterns
-- [Hooks](hooks/README.md) - Git and Claude Code hooks
+Track what's unknown, what's being investigated, what's resolved.
 
-## Patterns Overview
+```markdown
+| Question | Status | Resolution |
+|----------|--------|------------|
+| Contract validation? | ✅ Resolved | src/contracts.py:45-80 |
+| Default behavior? | 🔍 Investigating | Checking genesis... |
+| Edge case X? | ⏸️ Deferred | Out of scope, accepted risk |
+```
 
-| Category | Patterns |
-|----------|----------|
-| **Core Workflow** | Worktrees, Claims, Plans |
-| **Quality** | Testing, Mocking, Doc-Code Coupling |
-| **Planning** | Question-Driven, Uncertainty Tracking, Conceptual Modeling |
-| **Coordination** | PR Review, Ownership Respect |
+### Don't Guess, Verify
 
-## Configuration
+Hooks warn when plans contain unverified language ("I believe", "probably", "should be").
 
-Edit `meta-process.yaml` to control enforcement:
+## Enforcement
+
+Configure how strictly planning is enforced:
 
 ```yaml
-weight: medium  # minimal | light | medium | heavy
-
+# meta-process.yaml
 planning:
   question_driven_planning: advisory  # disabled | advisory | required
   uncertainty_tracking: advisory
   warn_on_unverified_claims: true
-
-project:
-  type: existing  # new | existing | prototype
-  complexity: moderate  # simple | moderate | complex
 ```
+
+| Level | Behavior |
+|-------|----------|
+| `disabled` | No checks |
+| `advisory` | Warnings (default) |
+| `required` | Blocks until resolved |
+
+## Getting Started
+
+```bash
+# Copy planning patterns and templates to your project
+cp -r patterns/ your-project/meta-process/patterns/
+cp templates/PLAN_TEMPLATE.md your-project/docs/plans/TEMPLATE.md
+cp meta-process.yaml.example your-project/meta-process.yaml
+
+# Before starting any significant work:
+# 1. Create a plan from the template
+# 2. Fill in Open Questions - investigate each one
+# 3. List files you'll touch
+# 4. Then implement
+```
+
+## What's Included
+
+```
+├── patterns/           # 29 patterns (planning, coordination, quality)
+├── templates/          # Plan template with required sections
+├── hooks/              # Enforcement for Git and Claude Code
+├── scripts/            # Validation scripts
+└── meta-process.yaml   # Configuration
+```
+
+## Key Patterns
+
+| Pattern | Problem It Solves |
+|---------|-------------------|
+| [Question-Driven Planning](patterns/28_question-driven-planning.md) | Guessing instead of investigating |
+| [Uncertainty Tracking](patterns/29_uncertainty-tracking.md) | Losing context across sessions |
+| [Plan Workflow](patterns/15_plan-workflow.md) | Scope creep, untracked changes |
+| [Conceptual Modeling](patterns/27_conceptual-modeling.md) | Repeated misunderstandings of architecture |
+
+## Documentation
+
+- [Getting Started](GETTING_STARTED.md) - Adoption guide
+- [All Patterns](patterns/01_README.md) - Full pattern index
+- [Hooks](hooks/README.md) - Enforcement hooks
 
 ## Origin
 
-Developed and stress-tested in [agent_ecology](https://github.com/BrianMills2718/agent_ecology2).
-
-## Version
-
-1.0.0
-
-Generated: 2026-01-28
+Built while running multiple Claude Code instances on a 200+ file codebase. Without structured planning, results were inconsistent. With it, Claude Code became reliable on complex work.
