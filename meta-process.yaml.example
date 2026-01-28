@@ -1,0 +1,259 @@
+# Meta-Process Configuration Example
+# ==================================
+#
+# Copy this file to meta-process.yaml in your project root.
+# See GETTING_STARTED.md for guidance on settings.
+#
+
+# Meta-Process Configuration
+# ==========================
+#
+# Controls enforcement strictness for meta-process checks.
+# Edit with care - reducing strictness allows drift to accumulate.
+#
+# WARNING: Before downgrading any setting, understand what it enforces.
+# Downgrading strictness means problems can slip through CI silently.
+
+# =============================================================================
+# Weight Level (Plan #218)
+# =============================================================================
+# Controls which checks run. Higher weight = more enforcement.
+#
+# Levels:
+#   heavy   - Full enforcement. For mature/regulated projects.
+#   medium  - Balanced. Most checks, less blocking. Default.
+#   light   - Low friction. Warnings instead of blocks. For prototypes.
+#   minimal - Almost nothing. Just plan validation. For quick experiments.
+#
+# See docs/plans/218_configurable_meta_process_weight.md for check matrix.
+weight: medium
+
+# Per-check overrides (optional)
+# Can force-enable or force-disable specific checks regardless of weight.
+# Values: "strict" (force on), "disabled" (force off), or omit for weight default.
+#
+# Example:
+#   overrides:
+#     doc_coupling_strict: strict    # Force strict even at light weight
+#     bidirectional: disabled        # Disable even at heavy weight
+overrides: {}
+
+# =============================================================================
+# GitHub Actions CI
+# =============================================================================
+# CI is controlled via .github/workflows/ci.yml
+#
+# Current status: DISABLED (triggers commented out, manual-only)
+#
+# To enable CI:
+#   1. Edit .github/workflows/ci.yml
+#   2. Uncomment the pull_request and push trigger sections
+#
+# To disable CI:
+#   - Comment out triggers (current state), OR
+#   - Create .github/ci-disabled file (workflow checks for this)
+#
+# Note: CI costs money (GitHub Actions minutes). Keep disabled when not needed.
+# =============================================================================
+
+enforcement:
+  # ---------------------------------------------------------------------------
+  # Plan Index Auto-Add
+  # ---------------------------------------------------------------------------
+  # When enabled, `sync_plan_status.py --sync` will automatically add new
+  # plan files to docs/plans/CLAUDE.md index table.
+  #
+  # Default: true
+  # Risk of disabling: New plans become invisible in the index, causing
+  #                    coordination failures when multiple CCs work on plans.
+  plan_index_auto_add: true
+
+  # ---------------------------------------------------------------------------
+  # Strict Doc-Code Coupling
+  # ---------------------------------------------------------------------------
+  # When enabled, ALL doc-code couplings fail CI on violation (including those
+  # marked `soft: true` in doc_coupling.yaml).
+  #
+  # When disabled, couplings with `soft: true` produce warnings instead of
+  # failures. A warning is shown on every CI run reminding that strictness
+  # is reduced.
+  #
+  # Default: true
+  # Risk of disabling: Doc drift accumulates silently. Over time, docs and
+  #                    code diverge, making the codebase harder to understand.
+  strict_doc_coupling: true
+
+  # ---------------------------------------------------------------------------
+  # Strictness Warning
+  # ---------------------------------------------------------------------------
+  # When strict_doc_coupling is false, this controls whether a prominent
+  # warning is shown on every doc-coupling check.
+  #
+  # Default: true (always show warning when running in non-strict mode)
+  # Risk of disabling: You forget strictness is reduced; drift goes unnoticed.
+  show_strictness_warning: true
+
+# =============================================================================
+# Hooks Configuration
+# =============================================================================
+# Control which Claude Code hooks are active.
+# Hooks provide guardrails but can be disabled if too restrictive.
+
+hooks:
+  # ---------------------------------------------------------------------------
+  # Core Hooks (recommended to keep enabled)
+  # ---------------------------------------------------------------------------
+
+  # Prevent editing in main directory (must use worktrees)
+  protect_main: true
+
+  # Prevent bypassing worktree/merge commands
+  enforce_workflow: true
+
+  # Warn if CC session CWD is inside a worktree
+  warn_worktree_cwd: true
+
+  # Auto-cleanup orphaned claims on session start
+  session_cleanup: true
+
+  # ---------------------------------------------------------------------------
+  # Optional Hooks (can disable if too strict)
+  # ---------------------------------------------------------------------------
+
+  # Enforce plan's "Files Affected" section (blocks edits to unlisted files)
+  # Default: false (too strict for exploratory work)
+  enforce_file_scope: false
+
+  # Require "References Reviewed" section in plans
+  # Default: false (warning only, low value)
+  require_references_reviewed: false
+
+  # Block edits if unread inter-CC messages exist
+  # Only relevant if inter_cc_messaging is enabled
+  # Default: false
+  block_on_unread_messages: false
+
+  # ---------------------------------------------------------------------------
+  # Context Injection (Plan #217)
+  # ---------------------------------------------------------------------------
+
+  # Inject governance context after Read tool completes
+  # Shows which ADRs govern the file and any context notes
+  # Default: true
+  inject_governance_context: true
+
+# =============================================================================
+# Workflow Configuration
+# =============================================================================
+# Control workflow behavior and defaults.
+
+workflow:
+  # ---------------------------------------------------------------------------
+  # Isolation Strategy
+  # ---------------------------------------------------------------------------
+  # How to isolate work: "worktree" (recommended) or "branch"
+  # - worktree: Creates git worktrees in worktrees/ directory
+  # - branch: Just creates branches (simpler, less isolation)
+  isolation: worktree
+
+  # ---------------------------------------------------------------------------
+  # Worktree Location
+  # ---------------------------------------------------------------------------
+  # Where to create worktrees (relative to repo root)
+  worktree_dir: worktrees
+
+  # ---------------------------------------------------------------------------
+  # Auto-cleanup
+  # ---------------------------------------------------------------------------
+  # Automatically clean up orphaned claims on session start
+  auto_cleanup_orphaned_claims: true
+
+  # Hours before a claim is considered stale (for cleanup)
+  stale_claim_hours: 8
+
+# =============================================================================
+# Planning Patterns (Plan #229)
+# =============================================================================
+# Configure patterns that improve planning quality and reduce AI drift.
+# These patterns help AI assistants investigate before assuming and track
+# uncertainties across sessions.
+#
+# Each pattern can be: disabled, advisory, required
+#   disabled - Pattern not used
+#   advisory - Sections appear in templates, warnings if missing (default)
+#   required - Blocks work if sections missing or incomplete
+
+planning:
+  # ---------------------------------------------------------------------------
+  # Question-Driven Planning
+  # ---------------------------------------------------------------------------
+  # Requires surfacing and investigating questions BEFORE proposing solutions.
+  # Prevents AI from guessing when it should investigate.
+  #
+  # Pattern doc: meta-process/patterns/28_question-driven-planning.md
+  #
+  # Levels:
+  #   disabled - No enforcement
+  #   advisory - Plans should have Open Questions section (warning if missing)
+  #   required - Plans must have Open Questions, all resolved before implementation
+  question_driven_planning: advisory
+
+  # Warn when plan files contain unverified language ("I believe", "might be")
+  # Only applies when question_driven_planning is advisory or required
+  warn_on_unverified_claims: true
+
+  # ---------------------------------------------------------------------------
+  # Uncertainty Tracking
+  # ---------------------------------------------------------------------------
+  # Track uncertainties with explicit status (open/investigating/resolved/deferred).
+  # Preserves context across sessions and context compaction.
+  #
+  # Pattern doc: meta-process/patterns/29_uncertainty-tracking.md
+  #
+  # Levels:
+  #   disabled - No tracking
+  #   advisory - Template includes section, no enforcement
+  #   required - All uncertainties must have resolution before plan completion
+  uncertainty_tracking: advisory
+
+  # ---------------------------------------------------------------------------
+  # Conceptual Modeling
+  # ---------------------------------------------------------------------------
+  # Maintain a formal model of "what things ARE" in the system.
+  # Reduces AI misconceptions about architecture.
+  #
+  # Pattern doc: meta-process/patterns/27_conceptual-modeling.md
+  #
+  # Levels:
+  #   disabled - No model required
+  #   advisory - If model exists, CC should reference it
+  #   required - Must have docs/CONCEPTUAL_MODEL.yaml, terms validated
+  conceptual_modeling: disabled
+
+  # If conceptual_modeling is advisory or required:
+  # Warn when code/plans use terms from the model's non_existence section
+  warn_on_prohibited_terms: true
+
+  # Path to conceptual model file (if using conceptual_modeling)
+  conceptual_model_path: docs/CONCEPTUAL_MODEL.yaml
+
+# =============================================================================
+# Project Type (for new project setup)
+# =============================================================================
+# Helps configure defaults based on project characteristics.
+# Used by install.sh and for guidance.
+
+project:
+  # Type affects default pattern configuration
+  # Options: new, existing, prototype
+  #   new       - Starting fresh, can adopt full patterns
+  #   existing  - Adding meta-process to existing codebase
+  #   prototype - Quick experiments, minimal overhead
+  type: existing
+
+  # Complexity affects which patterns are recommended
+  # Options: simple, moderate, complex
+  #   simple   - Few files, solo developer, clear scope
+  #   moderate - Multiple modules, some coordination needed
+  #   complex  - Large codebase, multiple contributors, novel architecture
+  complexity: moderate

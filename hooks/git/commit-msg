@@ -1,0 +1,54 @@
+#!/bin/bash
+# Commit-msg hook for agent_ecology
+# Enforces that ALL commits reference a plan - no exceptions
+
+COMMIT_MSG_FILE="$1"
+FIRST_LINE=$(head -n1 "$COMMIT_MSG_FILE")
+
+# Allow merge commits
+if [[ "$FIRST_LINE" =~ ^Merge ]]; then
+    exit 0
+fi
+
+# Allow fixup/squash commits
+if [[ "$FIRST_LINE" =~ ^(fixup!|squash!) ]]; then
+    exit 0
+fi
+
+# Check for plan reference: [Plan #N]
+if [[ "$FIRST_LINE" =~ ^\[Plan\ \#[0-9]+\] ]]; then
+    exit 0
+fi
+
+# Allow [Trivial] for small non-src changes
+if [[ "$FIRST_LINE" =~ ^\[Trivial\] ]]; then
+    exit 0
+fi
+
+# Block [Unplanned] - CI will reject these anyway
+if [[ "$FIRST_LINE" =~ ^\[Unplanned\] ]]; then
+    echo ""
+    echo "ERROR: [Unplanned] commits are no longer allowed!"
+    echo ""
+    echo "All work requires a plan. Even small fixes."
+    echo ""
+    echo "To fix:"
+    echo "  1. Create docs/plans/NN_description.md (can be lightweight)"
+    echo "  2. Use [Plan #NN] prefix in commit message"
+    echo ""
+    echo "See docs/plans/TEMPLATE.md for lightweight plan format."
+    echo ""
+    exit 1
+fi
+
+# Reject commits without plan reference
+echo ""
+echo "ERROR: Commit message must reference a plan!"
+echo ""
+echo "Format: [Plan #N] Short description"
+echo "   e.g. [Plan #3] Implement docker isolation"
+echo ""
+echo "All work requires a plan. No exceptions."
+echo "Plans can be lightweight - see docs/plans/TEMPLATE.md"
+echo ""
+exit 1

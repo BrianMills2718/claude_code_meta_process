@@ -1,0 +1,38 @@
+#!/bin/bash
+# Pre-push hook for agent_ecology
+# Warns if pushing a branch without an active claim
+
+# Get the branch being pushed
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Skip for main branch
+if [[ "$BRANCH" == "main" ]]; then
+    exit 0
+fi
+
+# Skip for trivial branches
+if [[ "$BRANCH" =~ ^trivial- ]]; then
+    exit 0
+fi
+
+# Check if branch has an active claim
+if command -v python3 &> /dev/null; then
+    CLAIM_CHECK=$(python3 scripts/check_claims.py --verify-branch "$BRANCH" 2>&1)
+    CLAIM_STATUS=$?
+
+    if [[ $CLAIM_STATUS -ne 0 ]]; then
+        echo ""
+        echo "=========================================="
+        echo "WARNING: No claim found for branch: $BRANCH"
+        echo "=========================================="
+        echo ""
+        echo "Consider claiming this work to coordinate with other instances:"
+        echo "  python scripts/check_claims.py --claim --task 'Your task description'"
+        echo ""
+        echo "Pushing anyway... (this is just a warning)"
+        echo ""
+    fi
+fi
+
+# Always allow push (warning only)
+exit 0
