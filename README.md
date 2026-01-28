@@ -4,118 +4,210 @@
 
 Claude Code works well on small projects. On large or complex codebases, it struggles—making no progress, or introducing regressions. The difference isn't the model. It's whether you planned before executing.
 
-This framework provides structured planning that Claude Code walks you through, then enforces during implementation.
+This framework provides a structured planning process that Claude Code walks you through, then enforces during implementation.
 
-## The Problem
+## The Planning Process
 
-Without structured planning on complex repos:
-- Claude Code guesses instead of investigating
-- Assumptions collapse late in implementation
-- Context is lost across sessions
-- Work thrashes or breaks existing functionality
+Before writing code, establish context and direction:
 
-## The Solution
-
-Plan first. Enforce the plan during execution.
-
-1. **Surface questions before proposing solutions** - Investigate, don't assume
-2. **Track uncertainties explicitly** - Preserve context across sessions
-3. **Verify claims in code** - Every "I believe" becomes "I verified in X"
-4. **Enforce plans with hooks** - Catch drift before it causes damage
-
-## Core Planning Patterns
-
-### Question-Driven Planning
-
-Before writing code, list what you don't know. Investigate each question.
-
-```markdown
-## Open Questions
-
-1. [ ] Where does permission checking happen?
-   - Status: OPEN
-   - Why it matters: Need to understand before modifying
-
-2. [x] How are contracts validated?
-   - Status: RESOLVED
-   - Answer: In permission_checker.py:34-89
-   - Verified in: src/world/permission_checker.py
+```
+PRD → Conceptual Model → Architecture → Gaps → Plans → Implementation
 ```
 
-### Uncertainty Tracking
+### 1. PRD (Product Requirements)
 
-Track what's unknown, what's being investigated, what's resolved.
+Start with what you're trying to achieve. What problem are you solving? What does success look like?
 
 ```markdown
-| Question | Status | Resolution |
-|----------|--------|------------|
-| Contract validation? | ✅ Resolved | src/contracts.py:45-80 |
-| Default behavior? | 🔍 Investigating | Checking genesis... |
-| Edge case X? | ⏸️ Deferred | Out of scope, accepted risk |
+## Problem
+Users can't recover their account if they lose their password.
+
+## Requirements
+- User can request password reset via email
+- Reset link expires after 24 hours
+- User must create new password meeting security requirements
+
+## Success Criteria
+- User can regain access within 5 minutes
+- No support tickets for password reset
 ```
 
-### Don't Guess, Verify
+### 2. Conceptual Model
 
-Hooks warn when plans contain unverified language ("I believe", "probably", "should be").
+Define what things ARE in your system. This prevents Claude Code from misunderstanding your architecture.
 
-## Enforcement
+```yaml
+# docs/CONCEPTUAL_MODEL.yaml
+concepts:
+  user:
+    definition: "A person with an account"
+    properties: [id, email, password_hash, created_at]
 
-Configure how strictly planning is enforced:
+  session:
+    definition: "An authenticated user's active login"
+    properties: [token, user_id, expires_at]
+
+  reset_token:
+    definition: "One-time token for password recovery"
+    properties: [token, user_id, expires_at, used]
+
+relationships:
+  - user has_many sessions
+  - user has_many reset_tokens
+```
+
+### 3. Architecture Documentation
+
+Document what exists (current) and where you're headed (target).
+
+```
+docs/architecture/
+├── current/          # What IS implemented
+│   ├── auth.md       # Current auth system
+│   └── database.md   # Current schema
+├── target/           # What we WANT
+│   └── auth.md       # Target auth with password reset
+└── adr/              # Architecture Decision Records
+    └── 001-jwt-sessions.md
+```
+
+**ADRs** capture decisions and their rationale:
+
+```markdown
+# ADR-001: Use JWT for Sessions
+
+## Status
+Accepted
+
+## Context
+Need stateless authentication for horizontal scaling.
+
+## Decision
+Use JWT tokens stored in httpOnly cookies.
+
+## Consequences
+- Stateless: no session store needed
+- Can't invalidate tokens server-side without blacklist
+```
+
+### 4. Gap Analysis
+
+Identify the delta between current and target:
+
+```markdown
+# Gap: Password Reset
+
+**Current:** No password recovery mechanism
+**Target:** Email-based password reset with expiring tokens
+**Priority:** High (blocking user acquisition)
+**Blocked by:** None
+**Blocks:** User onboarding flow
+```
+
+### 5. Plan
+
+For each gap, create a plan with:
+
+```markdown
+# Plan 12: Password Reset
+
+## Open Questions (Investigate BEFORE planning)
+
+1. [x] Where is auth currently handled?
+   - Resolved: src/auth/login.py handles all auth
+
+2. [x] How are emails sent?
+   - Resolved: src/notifications/email.py, uses SendGrid
+
+3. [ ] What's the password policy?
+   - Status: OPEN - need to check with product
+
+## References Reviewed
+
+- `src/auth/login.py:45-120` - current auth flow
+- `src/models/user.py` - user model
+- `docs/architecture/current/auth.md` - auth design
+
+## Files Affected
+
+- `src/auth/reset.py` (create)
+- `src/models/reset_token.py` (create)
+- `src/auth/login.py` (modify)
+- `tests/test_password_reset.py` (create)
+
+## Implementation Steps
+
+1. Create ResetToken model
+2. Add reset request endpoint
+3. Add reset confirmation endpoint
+4. Send reset email
+5. Update login to check for required reset
+
+## Required Tests (TDD)
+
+Write these FIRST:
+
+| Test | Verifies |
+|------|----------|
+| `test_request_reset_sends_email` | Email sent with valid token |
+| `test_reset_token_expires` | Can't use expired token |
+| `test_reset_changes_password` | Password actually changes |
+| `test_reset_invalidates_token` | Token can't be reused |
+
+## E2E Verification
+
+Before marking complete:
+- [ ] Request reset for real email
+- [ ] Click link, reset password
+- [ ] Login with new password
+- [ ] Verify old password rejected
+```
+
+### 6. Implementation with Enforcement
+
+Plans are enforced during implementation:
+
+- **TDD**: Tests must exist before implementation code
+- **Scope enforcement**: Can only edit files declared in plan
+- **E2E requirement**: Must pass real E2E test before "complete"
+- **Uncertainty tracking**: New questions get logged, not guessed
+
+## Enforcement Configuration
 
 ```yaml
 # meta-process.yaml
 planning:
-  question_driven_planning: advisory  # disabled | advisory | required
-  uncertainty_tracking: advisory
-  warn_on_unverified_claims: true
-```
+  question_driven_planning: required   # Must resolve questions first
+  uncertainty_tracking: advisory       # Track unknowns
+  warn_on_unverified_claims: true      # Flag "I believe", "probably"
 
-| Level | Behavior |
-|-------|----------|
-| `disabled` | No checks |
-| `advisory` | Warnings (default) |
-| `required` | Blocks until resolved |
-
-## Getting Started
-
-```bash
-# Copy planning patterns and templates to your project
-cp -r patterns/ your-project/meta-process/patterns/
-cp templates/PLAN_TEMPLATE.md your-project/docs/plans/TEMPLATE.md
-cp meta-process.yaml.example your-project/meta-process.yaml
-
-# Before starting any significant work:
-# 1. Create a plan from the template
-# 2. Fill in Open Questions - investigate each one
-# 3. List files you'll touch
-# 4. Then implement
+testing:
+  require_tests_before_implementation: true  # TDD
+  require_e2e_before_complete: true          # Real E2E required
 ```
 
 ## What's Included
 
-```
-├── patterns/           # 29 patterns (planning, coordination, quality)
-├── templates/          # Plan template with required sections
-├── hooks/              # Enforcement for Git and Claude Code
-├── scripts/            # Validation scripts
-└── meta-process.yaml   # Configuration
-```
+| Directory | Purpose |
+|-----------|---------|
+| `patterns/` | 29 patterns for planning, testing, coordination |
+| `templates/` | Plan template, ADR template, PRD template |
+| `hooks/` | Enforcement hooks for Git and Claude Code |
+| `scripts/` | Validation and enforcement scripts |
 
 ## Key Patterns
 
-| Pattern | Problem It Solves |
-|---------|-------------------|
-| [Question-Driven Planning](patterns/28_question-driven-planning.md) | Guessing instead of investigating |
-| [Uncertainty Tracking](patterns/29_uncertainty-tracking.md) | Losing context across sessions |
-| [Plan Workflow](patterns/15_plan-workflow.md) | Scope creep, untracked changes |
-| [Conceptual Modeling](patterns/27_conceptual-modeling.md) | Repeated misunderstandings of architecture |
+| Pattern | Purpose |
+|---------|---------|
+| [Question-Driven Planning](patterns/28_question-driven-planning.md) | Investigate before assuming |
+| [Uncertainty Tracking](patterns/29_uncertainty-tracking.md) | Preserve context across sessions |
+| [Conceptual Modeling](patterns/27_conceptual-modeling.md) | Define what things ARE |
+| [ADR](patterns/07_adr.md) | Capture architectural decisions |
+| [Plan Workflow](patterns/15_plan-workflow.md) | Structure implementation work |
+| [Acceptance-Gate-Driven Development](patterns/13_acceptance-gate-driven-development.md) | E2E verification checkpoints |
 
 ## Documentation
 
 - [Getting Started](GETTING_STARTED.md) - Adoption guide
 - [All Patterns](patterns/01_README.md) - Full pattern index
 - [Hooks](hooks/README.md) - Enforcement hooks
-
-## Origin
-
-Built while running multiple Claude Code instances on a 200+ file codebase. Without structured planning, results were inconsistent. With it, Claude Code became reliable on complex work.
